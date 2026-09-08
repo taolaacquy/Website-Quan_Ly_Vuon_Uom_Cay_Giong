@@ -1,0 +1,113 @@
+<template>
+  <main class="register-page">
+    <div class="background" aria-hidden="true"></div>
+    <div class="background-shade" aria-hidden="true"></div>
+
+    <section class="register-layout">
+      <div class="brand-panel">
+        <router-link to="/login" class="brand" aria-label="Vườn Ươm Xanh">
+          <span class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 64 64" fill="none">
+              <path d="M31.9 55.4V29.8" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" />
+              <path d="M31.8 37.2C21.1 36.5 14.1 29 14.5 17.4c10.6-.2 17.7 6.8 17.3 19.8Z" fill="currentColor" opacity=".9" />
+              <path d="M32.3 31.3C34.1 19.4 41.7 13.2 52 12.6c.6 11.1-6.1 18.1-19.7 18.7Z" fill="currentColor" opacity=".68" />
+              <path d="M19 55.5h27" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" />
+            </svg>
+          </span>
+          <span>Vườn Ươm Xanh</span>
+        </router-link>
+
+        <div class="brand-copy">
+          <p class="eyebrow">Gieo hôm nay • Xanh ngày mai</p>
+          <h1>Một hạt giống,<br /><em>triệu nền xanh!</em></h1>
+          <p class="intro">Cùng chúng mình nuôi dưỡng những mầm xanh, để mỗi lựa chọn nhỏ tạo nên một tương lai trong lành hơn.</p>
+        </div>
+
+        <p class="quote">“Thiên nhiên luôn biết cách bắt đầu lại.”</p>
+      </div>
+
+      <div class="form-column">
+        <div class="register-card">
+          <div class="card-heading">
+            <span class="step">Bắt đầu hành trình xanh</span>
+            <h2>Tạo tài khoản</h2>
+            <p>Chỉ mất một phút để trở thành một phần của Vườn Ươm Xanh.</p>
+          </div>
+
+          <form @submit.prevent="handleRegister">
+            <label for="fullname">Họ và tên</label>
+            <input id="fullname" v-model="fullname" type="text" placeholder="Nhập họ và tên của bạn" autocomplete="name" required />
+            <label for="email">Email</label>
+            <input id="email" v-model="email" type="email" placeholder="name@email.com" autocomplete="email" required />
+            <label for="password">Mật khẩu</label>
+            <input id="password" v-model="password" type="password" placeholder="Tối thiểu 6 ký tự" autocomplete="new-password" minlength="6" required />
+            <label for="role">Bạn tham gia với vai trò</label>
+            <select id="role" v-model="role">
+              <option value="customer">Người yêu cây xanh</option>
+              <option value="admin">Quản trị viên</option>
+            </select>
+            <button type="submit">Tạo tài khoản <span aria-hidden="true">→</span></button>
+          </form>
+          <p class="login-link">Đã có tài khoản? <router-link to="/login">Đăng nhập</router-link></p>
+        </div>
+      </div>
+    </section>
+  </main>
+</template>
+
+<script setup lang="ts">
+import { ref } from 'vue'
+import { useRouter } from 'vue-router'
+
+const fullname = ref('')
+const email = ref('')
+const password = ref('')
+const role = ref('customer')
+const router = useRouter()
+
+const handleRegister = () => {
+  const user = { fullname: fullname.value, email: email.value, password: password.value, role: role.value }
+  localStorage.setItem('user_' + email.value, JSON.stringify(user))
+  alert('Đăng ký thành công! Hãy đăng nhập.')
+  router.push('/login')
+}
+</script>
+
+<style scoped>
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,600;0,700;1,600;1,700&display=swap');
+.register-page { min-height: 100vh; position: relative; overflow: hidden; color: #f8fbf5; font-family: 'DM Sans', sans-serif; }
+.background { position: absolute; inset: 0; background: url('https://images.unsplash.com/photo-1441974231531-c6227db76b6e?auto=format&fit=crop&w=2200&q=85') center / cover no-repeat; transform: scale(1.02); }
+.background-shade { position: absolute; inset: 0; background: linear-gradient(90deg, rgba(10, 40, 27, .90) 0%, rgba(13, 57, 35, .70) 45%, rgba(7, 27, 18, .50) 100%), linear-gradient(0deg, rgba(5, 25, 15, .38), transparent 55%); }
+.register-layout { position: relative; z-index: 1; min-height: 100vh; width: min(1180px, 100%); margin: auto; padding: 38px 48px; display: grid; grid-template-columns: minmax(0, 1fr) 460px; gap: 70px; align-items: center; }
+.brand-panel { align-self: stretch; display: flex; flex-direction: column; padding: 4px 0; }
+.brand { display: inline-flex; align-items: center; gap: 10px; width: fit-content; color: inherit; text-decoration: none; font-weight: 700; letter-spacing: .01em; font-size: 1.08rem; }
+.brand-mark { display: grid; place-items: center; width: 42px; height: 42px; color: #d8f5ba; border: 1px solid rgba(219, 249, 187, .45); border-radius: 50%; background: rgba(218, 249, 188, .12); backdrop-filter: blur(6px); }
+.brand-mark svg { width: 30px; height: 30px; }
+.brand-copy { margin: auto 0; max-width: 570px; }
+.eyebrow, .step { color: #ccefae; text-transform: uppercase; letter-spacing: .13em; font-size: .72rem; font-weight: 700; }
+h1 { margin: 12px 0 18px; color: #fff; font: 700 clamp(2.7rem, 5vw, 4.75rem)/1.05 'Playfair Display', Georgia, serif; letter-spacing: -.045em; }
+h1 em { color: #d1f3ab; }
+.intro { max-width: 480px; font-size: 1.05rem; line-height: 1.75; color: rgba(249, 255, 247, .82); }
+.quote { color: rgba(245, 255, 240, .7); font: italic 1rem 'Playfair Display', Georgia, serif; }
+.form-column { display: flex; justify-content: flex-end; }
+.register-card { width: 100%; padding: 38px; color: #173526; background: rgba(255, 255, 252, .95); border: 1px solid rgba(255, 255, 255, .8); border-radius: 22px; box-shadow: 0 24px 70px rgba(2, 23, 12, .30); }
+.card-heading { margin-bottom: 26px; }
+.card-heading .step { color: #57844c; }
+h2 { margin: 5px 0 5px; color: #173b29; font: 700 2rem/1.2 'Playfair Display', Georgia, serif; letter-spacing: -.025em; }
+.card-heading p { font-size: .9rem; line-height: 1.5; color: #6a7b70; }
+form { display: flex; flex-direction: column; gap: 7px; }
+label { margin-top: 8px; color: #355342; font-size: .82rem; font-weight: 700; }
+input, select { width: 100%; height: 48px; padding: 0 14px; font: inherit; color: #193a29; background: #f6f8f3; border: 1px solid #dce5da; border-radius: 9px; outline: none; transition: border-color .2s, box-shadow .2s, background .2s; }
+input::placeholder { color: #98a69d; }
+input:focus, select:focus { border-color: #669b59; background: #fff; box-shadow: 0 0 0 3px rgba(103, 155, 89, .14); }
+select { appearance: none; background-image: linear-gradient(45deg, transparent 50%, #477441 50%), linear-gradient(135deg, #477441 50%, transparent 50%); background-position: calc(100% - 18px) 20px, calc(100% - 13px) 20px; background-size: 5px 5px, 5px 5px; background-repeat: no-repeat; }
+button { display: flex; align-items: center; justify-content: center; gap: 10px; height: 50px; margin-top: 16px; border: 0; border-radius: 9px; color: #fff; background: #2e6f45; box-shadow: 0 8px 16px rgba(34, 94, 54, .23); font: 700 .95rem inherit; cursor: pointer; transition: transform .2s, background .2s, box-shadow .2s; }
+button span { font-size: 1.22rem; transition: transform .2s; }
+button:hover { background: #245d39; box-shadow: 0 10px 20px rgba(34, 94, 54, .30); transform: translateY(-1px); }
+button:hover span { transform: translateX(3px); }
+.login-link { margin: 22px 0 0; text-align: center; color: #718177; font-size: .88rem; }
+.login-link a { color: #2c7045; font-weight: 700; text-decoration: none; }
+.login-link a:hover { text-decoration: underline; }
+@media (max-width: 800px) { .register-layout { grid-template-columns: 1fr; gap: 30px; padding: 28px 22px; } .brand-panel { min-height: 210px; } .quote { display: none; } .form-column { justify-content: center; } .register-card { max-width: 460px; } h1 { font-size: clamp(2.4rem, 10vw, 3.5rem); } }
+@media (max-width: 480px) { .register-layout { padding: 18px; } .brand-panel { min-height: 190px; } .register-card { padding: 28px 22px; border-radius: 18px; } }
+</style>
