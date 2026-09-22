@@ -52,24 +52,22 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { api } from '../services/api'
 
 const email = ref('')
 const password = ref('')
 const router = useRouter()
 
-const handleLogin = () => {
-  const savedUser = localStorage.getItem('user_' + email.value)
-  if (!savedUser) {
-    alert('Tài khoản không tồn tại! Vui lòng đăng ký.')
-    return
-  }
-
-  const user = JSON.parse(savedUser)
-  if (user.password === password.value) {
-    localStorage.setItem('currentUser', JSON.stringify(user))
-    router.push(user.role === 'admin' ? '/admin' : '/home')
-  } else {
-    alert('Mật khẩu không chính xác!')
+const handleLogin = async () => {
+  try {
+    const result = await api<{ user: { id: number; fullname: string; email: string; role: string } }>('auth/login', {
+      method: 'POST', body: { email: email.value, password: password.value }
+    })
+    if (!result.user) throw new Error('API đăng nhập không trả về tài khoản. Kiểm tra VITE_API_BASE_URL và PHP API.')
+    localStorage.setItem('currentUser', JSON.stringify(result.user))
+    router.push(result.user.role === 'admin' ? '/admin' : '/home')
+  } catch (error) {
+    alert(error instanceof Error ? error.message : 'Không thể đăng nhập.')
   }
 }
 </script>

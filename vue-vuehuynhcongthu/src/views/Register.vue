@@ -58,6 +58,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { api } from '../services/api'
 
 const fullname = ref('')
 const email = ref('')
@@ -65,11 +66,16 @@ const password = ref('')
 const role = ref('customer')
 const router = useRouter()
 
-const handleRegister = () => {
-  const user = { fullname: fullname.value, email: email.value, password: password.value, role: role.value }
-  localStorage.setItem('user_' + email.value, JSON.stringify(user))
-  alert('Đăng ký thành công! Hãy đăng nhập.')
-  router.push('/login')
+const handleRegister = async () => {
+  try {
+    await api('auth/register', {
+      method: 'POST', body: { fullname: fullname.value, email: email.value, password: password.value }
+    })
+    alert('Đăng ký thành công! Hãy đăng nhập.')
+    router.push('/login')
+  } catch (error) {
+    alert(error instanceof Error ? error.message : 'Không thể đăng ký.')
+  }
 }
 </script>
 
