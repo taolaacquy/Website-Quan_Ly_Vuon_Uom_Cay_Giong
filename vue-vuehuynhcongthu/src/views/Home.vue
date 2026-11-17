@@ -71,6 +71,18 @@
       </div>
     </section>
 
+    <section id="purchases" class="catalog purchase-history">
+      <div class="section-heading"><div><p class="eyebrow">Tài khoản của bạn</p><h2>Lịch sử mua hàng</h2></div><button class="catalog-cart" @click="loadPurchaseOrders">Làm mới đơn hàng</button></div>
+      <article v-for="order in purchaseOrders" :key="order.order_code" class="purchase-order">
+        <div><strong>{{ order.order_code }}</strong><small>{{ order.items }} · {{ new Date(order.created_at).toLocaleString('vi-VN') }}</small></div>
+        <span>{{ order.status === 'approved' ? 'Đã duyệt' : order.status === 'rejected' ? 'Đã từ chối' : 'Đang chờ duyệt' }}</span>
+        <b>{{ formatCurrency(Number(order.subtotal)) }}</b>
+      </article>
+      <p v-if="!purchaseOrders.length" class="purchase-empty">Bạn chưa có đơn mua nào.</p>
+      <h3 class="purchase-notice-title">Thông báo đơn hàng</h3>
+      <p v-for="order in purchaseOrders" :key="`${order.order_code}-notice`" class="purchase-notice">{{ order.order_code }}: {{ order.status === 'approved' ? 'Đơn hàng đã được duyệt.' : order.status === 'rejected' ? 'Đơn hàng chưa được duyệt.' : 'Đơn hàng đang chờ quản trị viên kiểm tra hóa đơn.' }}</p>
+    </section>
+
     <Teleport to="body">
       <div v-if="selectedPlant" class="plant-modal" role="dialog" aria-modal="true" :aria-label="`Thông tin ${selectedPlant.name}`" @click.self="closePlant">
         <div class="modal-card">
@@ -129,6 +141,7 @@
           <p class="eyebrow">Thanh toán chuyển khoản</p><h2>Hoàn tất đơn hàng</h2><p class="checkout-note">Vui lòng chuyển đúng nội dung để chủ vườn xác nhận đơn nhanh hơn.</p>
           <div class="bank-box"><span class="bank-icon">MB</span><div><small>Ngân hàng MB Bank</small><strong>HUYNH CONG THU</strong><b>0979745413</b></div><button @click="copyAccount">{{ copied ? 'Đã sao chép' : 'Sao chép' }}</button></div>
           <div class="transfer-total"><span>Tổng thanh toán</span><strong>{{ formatCurrency(cartTotal) }}</strong><small>Nội dung: VUX {{ orderCode }}</small></div>
+          <div class="payment-qr"><img :src="paymentQrUrl" :alt="`Mã QR chuyển ${formatCurrency(cartTotal)} đến MB Bank`" /><p>Mở ứng dụng ngân hàng và quét mã QR để chuyển khoản</p></div>
           <label class="upload-label" for="payment-proof"><input id="payment-proof" type="file" accept="image/png,image/jpeg,image/webp" @change="handlePaymentProof" /><span class="upload-icon">↑</span><strong>{{ paymentProofName || 'Tải ảnh giao dịch thành công' }}</strong><small>Chấp nhận PNG, JPG hoặc WEBP</small></label>
           <img v-if="paymentProofUrl" class="payment-preview" :src="paymentProofUrl" alt="Ảnh giao dịch khách đã tải lên" />
           <button class="confirm-payment" :disabled="!paymentProofName" @click="confirmPayment">{{ paymentConfirmed ? 'Đã gửi yêu cầu xác nhận ✓' : 'Tôi đã chuyển khoản' }}</button>
@@ -144,6 +157,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { api } from '../services/api'
 
 type Plant = {
   name: string; category: string; latin: string; note: string; image: string; imageSource: string
@@ -189,14 +203,20 @@ const paymentProofName = ref('')
 const paymentProofUrl = ref('')
 const paymentConfirmed = ref(false)
 const copied = ref(false)
-const orderCode = `VX${String(Date.now()).slice(-6)}`
-const user = ref<{ fullname?: string } | null>(null)
+const orderCode = `VX${String(Date.now()).slice(-6)}${String(Math.floor(Math.random() * 90) + 10)}`
+const user = ref<{ id: number; fullname?: string; email: string } | null>(null)
+type CustomerOrder = { order_code:string; items:string; subtotal:number; status:string; created_at:string; file_path?:string }
+const purchaseOrders = ref<CustomerOrder[]>([])
 const router = useRouter()
 
 const priceFor = (plant: Plant) => productPricing[plant.name] || { amount: 0, source: '#' }
 const formatCurrency = (amount: number) => `${new Intl.NumberFormat('vi-VN').format(amount)}₫`
 const cartItemCount = computed(() => cart.value.reduce((total, item) => total + item.quantity, 0))
 const cartTotal = computed(() => cart.value.reduce((total, item) => total + priceFor(item.plant).amount * item.quantity, 0))
+const paymentQrUrl = computed(() => {
+  const query = new URLSearchParams({ amount: String(Math.round(cartTotal.value)), addInfo: `VUX ${orderCode}`, accountName: 'HUYNH CONG THU' })
+  return `https://img.vietqr.io/image/MB-0979745413-compact2.png?${query.toString()}`
+})
 const selectedQuantity = (plantName: string) => quantities.value[plantName] || 1
 const changeSelectedQuantity = (plantName: string, change: number) => {
   quantities.value[plantName] = Math.max(1, selectedQuantity(plantName) + change)
@@ -240,12 +260,28 @@ const handlePaymentProof = (event: Event) => {
 const copyAccount = async () => {
   try { await navigator.clipboard.writeText('0979745413'); copied.value = true; setTimeout(() => { copied.value = false }, 1800) } catch { copied.value = false }
 }
-const confirmPayment = () => { if (paymentProofName.value) paymentConfirmed.value = true }
-onMounted(() => {
+const confirmPayment = async () => {
+  const file = (document.querySelector<HTMLInputElement>('#payment-proof'))?.files?.[0]
+  if (!file || !user.value?.id || !user.value.email) { alert('Đăng nhập lại để xác minh tài khoản trước khi đặt hàng.'); return }
+  if (file.size > 5 * 1024 * 1024) { alert('Ảnh hóa đơn tối đa 5 MB.'); return }
+  const proof = await new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = () => reject(new Error('Không đọc được ảnh hóa đơn.')); reader.readAsDataURL(file) })
+  try {
+    await api('orders', { method:'POST', body:{ user_id:user.value.id, order_code:orderCode, customer_name:user.value.fullname || user.value.email, customer_email:user.value.email, payment_proof:proof, items:cart.value.map(item=>({plant_name:item.plant.name, quantity:item.quantity})) } })
+    cart.value = []; localStorage.removeItem('green_nursery_cart'); paymentConfirmed.value = true
+    await loadPurchaseOrders()
+    setTimeout(() => { isCheckoutOpen.value = false; isCartOpen.value = false }, 1200)
+  } catch (error) { alert(error instanceof Error ? error.message : 'Không gửi được đơn hàng.') }
+}
+const loadPurchaseOrders = async () => {
+  if (!user.value) return
+  try { const result = await api<{orders:CustomerOrder[]}>(`customer/orders&user_id=${user.value.id}&email=${encodeURIComponent(user.value.email)}`); purchaseOrders.value = result.orders } catch { /* API có thể chưa chạy */ }
+}
+onMounted(async () => {
   const data = localStorage.getItem('currentUser')
   const savedCart = localStorage.getItem('green_nursery_cart')
   if (data) user.value = JSON.parse(data)
   if (savedCart) cart.value = JSON.parse(savedCart)
+  await loadPurchaseOrders()
 })
 watch(cart, value => localStorage.setItem('green_nursery_cart', JSON.stringify(value)), { deep: true })
 const logout = () => { localStorage.removeItem('currentUser'); router.push('/login') }
@@ -273,8 +309,9 @@ const usageFor = (plant: Plant) => plant.category === 'Cây lấy gỗ'
 .plant-modal { position: fixed; z-index: 20; inset: 0; display: grid; place-items: center; padding: 24px; background: rgba(6, 31, 19, .70); backdrop-filter: blur(7px); }.modal-card { position: relative; display: grid; grid-template-columns: minmax(230px, .85fr) minmax(0, 1.3fr); width: min(930px, 100%); max-height: min(720px, calc(100vh - 48px)); overflow: auto; border: 1px solid rgba(255,255,255,.65); border-radius: 22px; background: #fbfcf8; box-shadow: 0 28px 80px rgba(0, 19, 10, .42); }.modal-image { min-height: 100%; background-position: center; background-size: cover; }.modal-image::after { display: block; height: 100%; min-height: 560px; content: ''; background: linear-gradient(180deg, rgba(10,53,30,.12), rgba(10,53,30,.55)); }.modal-image span { position: absolute; z-index: 1; margin: 22px; padding: 6px 11px; color: #fff; border: 1px solid rgba(255,255,255,.35); border-radius: 20px; background: rgba(16,67,39,.58); font-size: .72rem; font-weight: 700; backdrop-filter: blur(6px); }.close-modal { position: absolute; z-index: 3; top: 14px; right: 14px; display: grid; width: 34px; height: 34px; place-items: center; color: #245438; border: 0; border-radius: 50%; background: rgba(255,255,255,.93); box-shadow: 0 2px 9px rgba(0,0,0,.13); font-size: 1.55rem; line-height: 1; cursor: pointer; }.modal-content { padding: 42px 42px 32px; }.modal-latin { margin: 0 0 4px; color: #71996d; font-size: .73rem; font-style: italic; }.modal-content h2 { margin: 0 0 15px; color: #1b482f; font: 700 2.15rem/1.15 'Playfair Display', Georgia, serif; letter-spacing: -.035em; }.description { margin: 0; color: #5e7465; line-height: 1.7; }.guide-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 27px; }.guide-grid section { padding: 17px; border: 1px solid #e2ebdf; border-radius: 12px; background: #f4f8f1; }.guide-icon { color: #75a167; font: 700 .7rem 'DM Sans', sans-serif; letter-spacing: .1em; }.guide-grid h3 { margin: 4px 0 8px; color: #2d6140; font: 700 1.05rem 'Playfair Display', Georgia, serif; }.guide-grid ul { display: grid; gap: 7px; margin: 0; padding-left: 15px; color: #617869; font-size: .78rem; line-height: 1.47; }.image-source { display: inline-block; margin-top: 23px; color: #337145; border-bottom: 1px solid #9abf90; text-decoration: none; font-size: .76rem; font-weight: 700; }.image-source:hover { color: #1e5b33; }
 .price-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-top: 22px; padding: 14px 15px; border: 1px solid #dcebd6; border-radius: 12px; background: #f2f9ee; }.price-row span, .price-row strong, .price-row small { display: block; }.price-row span { color: #718674; font-size: .68rem; }.price-row strong { color: #24683e; font: 700 1.35rem 'Playfair Display', serif; }.price-row small { display: inline; margin-left: 3px; color: #6d8a71; font: 500 .67rem 'DM Sans', sans-serif; }.price-row button, .checkout button { border: 0; border-radius: 8px; color: #fff; background: #2e7045; font: 700 .75rem 'DM Sans', sans-serif; cursor: pointer; }.price-row button { padding: 11px 13px; white-space: nowrap; }.price-row button span { display: inline; color: inherit; font-size: 1.05rem; }.source-links { display: flex; flex-wrap: wrap; gap: 0 18px; }.source-links .image-source { margin-top: 18px; }
 .cart-overlay, .checkout-overlay { position: fixed; z-index: 30; inset: 0; background: rgba(6, 32, 19, .58); backdrop-filter: blur(4px); }.cart-drawer { position: absolute; top: 0; right: 0; display: flex; width: min(440px, 100%); height: 100%; flex-direction: column; padding: 28px; color: #244735; background: #fbfdf8; box-shadow: -22px 0 60px rgba(0,20,10,.25); }.cart-header { display: flex; justify-content: space-between; gap: 15px; padding-bottom: 19px; border-bottom: 1px solid #e6eee3; }.cart-header h2, .checkout-card h2 { margin: 0; color: #214d33; font: 700 1.9rem 'Playfair Display', Georgia, serif; letter-spacing: -.035em; }.cart-header button, .close-checkout { display: grid; width: 34px; height: 34px; place-items: center; color: #306045; border: 0; border-radius: 50%; background: #edf4e9; font-size: 1.4rem; cursor: pointer; }.cart-items { display: grid; flex: 1; align-content: start; gap: 4px; padding: 15px 0; overflow: auto; }.cart-item { display: flex; align-items: flex-start; gap: 11px; padding: 10px 0; border-bottom: 1px solid #edf2eb; }.cart-thumb { display: block; width: 57px; height: 57px; flex: none; border-radius: 9px; background-position: center; background-size: cover; }.cart-item-info { flex: 1; }.cart-item-info strong, .cart-item-info small { display: block; }.cart-item-info strong { color: #345440; font-size: .82rem; }.cart-item-info small { margin: 2px 0 7px; color: #7b937f; font-size: .69rem; }.quantity { display: inline-flex; align-items: center; overflow: hidden; border: 1px solid #dce7d8; border-radius: 6px; }.quantity button { width: 24px; height: 22px; color: #497052; border: 0; background: #f4f8f1; font-size: .95rem; cursor: pointer; }.quantity span { display: inline-block; width: 24px; color: #426348; text-align: center; font-size: .72rem; font-weight: 700; }.remove-item { margin-top: 1px; color: #97a99a; border: 0; background: transparent; font-size: 1.15rem; cursor: pointer; }.empty-cart { display: grid; flex: 1; place-content: center; text-align: center; }.empty-cart span { font-size: 2rem; }.empty-cart h3 { margin: 10px 0 3px; color: #31563d; font-size: 1.2rem; }.empty-cart p { margin: 0; color: #849489; font-size: .8rem; }.checkout { padding-top: 16px; border-top: 1px solid #e3ece0; }.subtotal { display: flex; justify-content: space-between; color: #5f7566; font-size: .8rem; }.subtotal strong { color: #245c38; font: 700 1.25rem 'Playfair Display', serif; }.checkout p { margin: 6px 0 13px; color: #8a998e; font-size: .67rem; }.checkout > button { display: flex; width: 100%; justify-content: space-between; padding: 13px 15px; font-size: .83rem; }.checkout > button span { font-size: 1.1rem; }.checkout-overlay { z-index: 40; display: grid; place-items: center; padding: 20px; }.checkout-card { position: relative; width: min(480px, 100%); max-height: calc(100vh - 40px); overflow: auto; padding: 34px; border: 1px solid rgba(255,255,255,.7); border-radius: 18px; color: #365642; background: #fbfdf8; box-shadow: 0 25px 70px rgba(0,20,10,.33); }.close-checkout { position: absolute; top: 15px; right: 15px; }.checkout-note { margin: 8px 0 19px; color: #718378; font-size: .8rem; line-height: 1.5; }.bank-box { display: flex; align-items: center; gap: 12px; padding: 15px; border: 1px solid #d6ead2; border-radius: 11px; background: #f2f9ed; }.bank-icon { display: grid; width: 41px; height: 41px; flex: none; place-items: center; color: #fff; border-radius: 9px; background: #1261a3; font-size: .75rem; font-weight: 700; }.bank-box div { flex: 1; }.bank-box small, .bank-box strong, .bank-box b { display: block; }.bank-box small { color: #77907c; font-size: .64rem; }.bank-box strong { margin-top: 1px; color: #345d41; font-size: .73rem; }.bank-box b { color: #176039; font-size: 1.02rem; letter-spacing: .04em; }.bank-box button { padding: 6px 8px; color: #337046; border: 1px solid #c8e1c4; border-radius: 6px; background: #fff; font: 700 .64rem 'DM Sans', sans-serif; cursor: pointer; }.transfer-total { display: grid; grid-template-columns: 1fr auto; gap: 3px; margin: 17px 0; padding-bottom: 15px; border-bottom: 1px dashed #d6e1d4; }.transfer-total span { color: #6f8274; font-size: .73rem; }.transfer-total strong { color: #235a38; font: 700 1.35rem 'Playfair Display', serif; }.transfer-total small { grid-column: 1 / -1; color: #879889; font-size: .69rem; }.upload-label { display: grid; min-height: 115px; place-items: center; align-content: center; border: 1.5px dashed #a6cca0; border-radius: 11px; background: #f7fbf4; text-align: center; cursor: pointer; }.upload-label input { position: absolute; width: 1px; height: 1px; opacity: 0; }.upload-icon { display: grid; width: 27px; height: 27px; place-items: center; color: #4a8752; border-radius: 50%; background: #ddf1d8; font-size: 1.1rem; }.upload-label strong { margin-top: 5px; color: #3e6948; font-size: .77rem; }.upload-label small { color: #849589; font-size: .65rem; }.payment-preview { display: block; width: 100%; max-height: 155px; margin-top: 10px; border-radius: 8px; object-fit: cover; }.confirm-payment { width: 100%; margin-top: 15px; padding: 13px; font-size: .82rem !important; }.confirm-payment:disabled { cursor: not-allowed; opacity: .45; }.payment-success { margin: 10px 0 0; color: #4d8a58; text-align: center; font-size: .71rem; line-height: 1.45; }
-.flying-plant { position: fixed; z-index: 100; overflow: hidden; border-radius: 12px; background-position: center; background-size: cover; pointer-events: none; animation: fly-to-cart .7s cubic-bezier(.2,.75,.25,1) forwards; box-shadow: 0 10px 25px rgba(15, 61, 30, .3); }.flying-plant::after, .flying-plant > * { display: none !important; }@keyframes fly-to-cart { 0% { opacity: 1; transform: scale(1); } 70% { opacity: .86; } 100% { opacity: 0; transform: translate(var(--fly-x), var(--fly-y)) scale(.12) rotate(12deg); } }
+.purchase-order{display:flex;gap:20px;align-items:center;justify-content:space-between;padding:15px 0;border-bottom:1px solid #e2ece0}.purchase-order div{display:grid;gap:4px}.purchase-order small,.purchase-empty,.purchase-notice{color:#718378;font-size:.78rem}.purchase-order span{color:#387346;font-weight:700}.purchase-notice-title{margin:22px 0 8px;color:#28503a}.purchase-notice{padding:8px 12px;border-radius:8px;background:#eef7e9}.flying-plant { position: fixed; z-index: 100; overflow: hidden; border-radius: 12px; background-position: center; background-size: cover; pointer-events: none; animation: fly-to-cart .7s cubic-bezier(.2,.75,.25,1) forwards; box-shadow: 0 10px 25px rgba(15, 61, 30, .3); }.flying-plant::after, .flying-plant > * { display: none !important; }@keyframes fly-to-cart { 0% { opacity: 1; transform: scale(1); } 70% { opacity: .86; } 100% { opacity: 0; transform: translate(var(--fly-x), var(--fly-y)) scale(.12) rotate(12deg); } }
 @media (max-width: 960px) { .product-grid { grid-template-columns: repeat(3, 1fr); }.site-header, .catalog { padding-left: 28px; padding-right: 28px; }.hero { padding-right: 28px; padding-left: 28px; }.hero-note { right: 28px; } }
 @media (max-width: 700px) { .site-header { padding: 18px 20px; }.welcome { display: none; }.header-actions { gap: 0; }.hero { min-height: 520px; padding: 125px 20px 72px; }.hero-note { display: none; }.catalog { padding: 56px 20px 65px; }.section-heading { align-items: flex-start; flex-direction: column; }.catalog-cart { width: 100%; }.product-grid { grid-template-columns: repeat(2, 1fr); gap: 13px; }.plant-image { height: 165px; }.plant-info { padding: 14px; }.plant-info h3 { font-size: 1.08rem; }.section-heading h2 { font-size: 2rem; }.plant-modal { padding: 12px; }.modal-card { display: block; max-height: calc(100vh - 24px); }.modal-image { min-height: 205px; }.modal-image::after { min-height: 205px; }.modal-content { padding: 27px 22px 24px; }.modal-content h2 { font-size: 1.85rem; }.guide-grid { grid-template-columns: 1fr; gap: 11px; margin-top: 20px; } }
 @media (max-width: 380px) { .product-grid { grid-template-columns: 1fr; }.plant-image { height: 190px; }.brand { font-size: .95rem; }.brand-mark { width: 36px; height: 36px; } }
+.payment-qr { display:grid; justify-items:center; gap:5px; margin:0 0 15px; padding:12px; border:1px solid #e2ecde; border-radius:11px; background:#fff; }.payment-qr img { display:block; width:min(240px, 100%); aspect-ratio:1; object-fit:contain; }.payment-qr p { margin:0; color:#718378; text-align:center; font-size:.69rem; }
 </style>

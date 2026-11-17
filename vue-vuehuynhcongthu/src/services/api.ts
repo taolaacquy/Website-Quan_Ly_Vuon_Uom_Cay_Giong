@@ -4,7 +4,8 @@ type ApiOptions = Omit<RequestInit, 'body'> & { body?: unknown }
 
 export async function api<T>(route: string, options: ApiOptions = {}): Promise<T> {
   const separator = baseUrl.includes('?') ? '&' : '?'
-  const response = await fetch(`${baseUrl}${separator}route=${encodeURIComponent(route)}`, {
+  const [routeName, query = ''] = route.split('?', 2)
+  const response = await fetch(`${baseUrl}${separator}route=${encodeURIComponent(routeName)}${query ? `&${query}` : ''}`, {
     ...options,
     headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
     body: options.body === undefined ? undefined : JSON.stringify(options.body)
